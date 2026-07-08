@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.droptracklive'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.droptracklive"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // NotificationCompat.ProgressStyle + setRequestPromotedOngoing +
+  // setShortCriticalText landed in androidx.core 1.17.0. Using the compat
+  // layer keeps us on compileSdk 36 — the platform variants of these APIs
+  // need SDK 36.1 (Android 16 QPR), which RN 0.86 doesn't compile against.
+  implementation 'androidx.core:core-ktx:1.17.0'
+}

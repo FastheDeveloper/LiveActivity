@@ -1,0 +1,15 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="expo.modules.droptracklive" >
+4
+5    <uses-sdk android:minSdkVersion="24" />
+6    <!-- Runtime permission (API 33+) to post any notification at all -->
+7    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+7-->/Users/fas/2025.nosync/LiveActivity/modules/droptrack-live/android/src/main/AndroidManifest.xml:3:3-75
+7-->/Users/fas/2025.nosync/LiveActivity/modules/droptrack-live/android/src/main/AndroidManifest.xml:3:20-72
+8    <!-- Install-time permission (API 36+) required for Live Updates promotion -->
+9    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+9-->/Users/fas/2025.nosync/LiveActivity/modules/droptrack-live/android/src/main/AndroidManifest.xml:5:3-84
+9-->/Users/fas/2025.nosync/LiveActivity/modules/droptrack-live/android/src/main/AndroidManifest.xml:5:20-81
+10
+11</manifest>

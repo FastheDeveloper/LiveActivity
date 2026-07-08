@@ -1,15 +1,27 @@
 {
   "expo": {
-    "name": "LiveActivity",
-    "slug": "LiveActivity",
+    "name": "DropTrack",
+    "slug": "droptrack",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fasarticle.droptrack",
+      "appleTeamId": "V993Z3KD7P",
+      "infoPlist": {
+        "NSSupportsLiveActivities": true,
+        "NSSupportsLiveActivitiesFrequentUpdates": true
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.fasarticle.droptrack"
+        ]
+      }
     },
     "android": {
+      "package": "com.fasarticle.droptrack",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -20,6 +32,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "@bacons/apple-targets",
+        {
+          "appleTeamId": "V993Z3KD7P"
+        }
+      ]
+    ]
   }
 }

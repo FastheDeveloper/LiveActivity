@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["DroptrackLiveModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.droptracklive.DroptrackLiveModule"]
+  }
+}

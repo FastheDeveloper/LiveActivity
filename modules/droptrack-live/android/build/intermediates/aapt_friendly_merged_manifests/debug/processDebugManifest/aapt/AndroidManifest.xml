@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="expo.modules.droptracklive" >
+
+    <uses-sdk android:minSdkVersion="24" />
+    <!-- Runtime permission (API 33+) to post any notification at all -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Install-time permission (API 36+) required for Live Updates promotion -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
+</manifest>

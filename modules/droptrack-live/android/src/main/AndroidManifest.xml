@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Runtime permission (API 33+) to post any notification at all -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- Install-time permission (API 36+) required for Live Updates promotion -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+</manifest>
