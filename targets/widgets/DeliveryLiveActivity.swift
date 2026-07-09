@@ -3,6 +3,33 @@ import SwiftUI
 import WidgetKit
 
 private let brandOrange = Color(red: 1.0, green: 0.42, blue: 0.17)
+// Matches the in-app track colour (#374151) so the lock-screen bar reads as
+// the same component as the dev console's.
+private let trackGray = Color(red: 0.216, green: 0.255, blue: 0.318)
+
+// Segmented progress bar mirroring the in-app one: one capsule per delivery
+// step, filling left-to-right. The ContentState only carries `progress`
+// (0...1), not a step index, so we derive the filled count from it — with the
+// scripted step values (0.05…1.0) this fills 1→7 segments in lockstep.
+private struct SegmentedProgressBar: View {
+  let progress: Double
+  var segments: Int = 7  // mirrors STEPS.count in the app
+
+  private var filled: Int {
+    let clamped = min(max(progress, 0), 1)
+    return min(segments, Int((clamped * Double(segments)).rounded(.up)))
+  }
+
+  var body: some View {
+    HStack(spacing: 5) {
+      ForEach(0..<segments, id: \.self) { i in
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+          .fill(i < filled ? brandOrange : trackGray)
+          .frame(height: 7)
+      }
+    }
+  }
+}
 
 struct DeliveryLiveActivity: Widget {
   var body: some WidgetConfiguration {
@@ -33,8 +60,7 @@ struct DeliveryLiveActivity: Widget {
         }
         DynamicIslandExpandedRegion(.bottom) {
           VStack(spacing: 4) {
-            ProgressView(value: context.state.progress)
-              .tint(brandOrange)
+            SegmentedProgressBar(progress: context.state.progress)
             HStack {
               CourierLabel(state: context.state, compact: true)
               Spacer()
@@ -84,8 +110,7 @@ private struct DeliveryCardView: View {
         .font(.title3.weight(.semibold))
         .foregroundStyle(.white)
 
-      ProgressView(value: context.state.progress)
-        .tint(brandOrange)
+      SegmentedProgressBar(progress: context.state.progress)
 
       HStack {
         CourierLabel(state: context.state, compact: false)

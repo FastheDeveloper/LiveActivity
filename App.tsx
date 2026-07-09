@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  AppState,
   Linking,
   LogBox,
   PermissionsAndroid,
@@ -69,21 +70,32 @@ export default function App() {
   }, []);
 
   // Live Activities belong to the system, not to this process: they survive
-  // force-quit and relaunch. Tapping the lock-screen card or the Dynamic Island
-  // COLD-STARTS the app, so without this the console would show "Not tracking"
-  // with every button disabled while the card is still on screen — and the only
-  // handle on the running activity (its id) would be lost for good.
+  // force-quit and relaunch, and a PUSH updates the widget directly without our
+  // JS ever running — so our in-memory step/rider goes stale. Pull the system's
+  // copy back into React state on every foreground:
+  //  - cold start (tap the card when the app was killed): mount runs this once;
+  //  - resume (tap the card when the app was only backgrounded): the mount
+  //    effect does NOT re-run, so an AppState 'active' listener re-syncs. Without
+  //    it, a push sent while backgrounded shows on the lock screen but the app
+  //    reopens on the old step.
   useEffect(() => {
-    void DroptrackLive.getRunningActivities().then((running) => {
-      const activity = running[0];
-      if (!activity) return;
-      setActivityId(activity.activityId);
-      setRider({ name: activity.courierName, justReassigned: activity.riderReassigned });
-      if (activity.pushToken) setPushToken(activity.pushToken);
-      // Recover which step we were on from the state the system held for us.
-      const index = STEPS.findIndex((s) => s.status === activity.status);
-      if (index >= 0) setStepIndex(index);
+    const sync = () => {
+      void DroptrackLive.getRunningActivities().then((running) => {
+        const activity = running[0];
+        if (!activity) return;
+        setActivityId(activity.activityId);
+        setRider({ name: activity.courierName, justReassigned: activity.riderReassigned });
+        if (activity.pushToken) setPushToken(activity.pushToken);
+        // Recover which step we're on from the state the system holds for us.
+        const index = STEPS.findIndex((s) => s.status === activity.status);
+        if (index >= 0) setStepIndex(index);
+      });
+    };
+    sync();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') sync();
     });
+    return () => sub.remove();
   }, []);
 
   const start = async () => {
