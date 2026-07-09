@@ -40,7 +40,8 @@
         {
           "appleTeamId": "V993Z3KD7P"
         }
-      ]
+      ],
+      "./plugins/withAndroidFcm"
     ]
   }
 }
