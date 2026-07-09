@@ -23,4 +23,7 @@ dependencies {
   // layer keeps us on compileSdk 36 — the platform variants of these APIs
   // need SDK 36.1 (Android 16 QPR), which RN 0.86 doesn't compile against.
   implementation 'androidx.core:core-ktx:1.17.0'
+  // FCM: FirebaseMessaging + FirebaseMessagingService for push-driven updates.
+  implementation platform('com.google.firebase:firebase-bom:33.7.0')
+  implementation 'com.google.firebase:firebase-messaging'
 }
