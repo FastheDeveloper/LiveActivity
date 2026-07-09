@@ -88,6 +88,50 @@ Best explanations + code snippets get pulled here from the devlog as we go.
 
 - (A1–A5 fill this out with real code + screenshots.)
 
+### 7.5 A5 — Samsung reality check (Galaxy S25 Ultra via Remote Test Lab, 2026-07-09)
+
+- **Samsung's "Android 16" is base API 36** (`sdk_full=36.0`, One UI 8.0, June-2025 build) —
+  the promotion pipeline (chip, promoted lock-screen slot) literally isn't on the device.
+  The 36 vs 36.1 trap, now on real flagship hardware a year after "Android 16" shipped.
+- Same APK, three verdicts: Pixel QPR → promotes (chip + lock card); base-36 Pixel emulator →
+  `hasPromotableCharacteristics()=false`; Samsung base-36 → `hasPromotableCharacteristics()=TRUE`
+  but `canPostPromotedNotifications()=false` — Samsung backported framework pieces without the
+  user-facing pipeline. Version numbers tell you nothing; feature-detect at runtime.
+- ProgressStyle itself renders nicely in One UI clothing: orange bar + truck tracker survive,
+  milestone Point drawn as a square notch (Pixel: dot), future `setWhen` shown as absolute
+  "2:46 PM" (Pixel: "in 24m").
+- **The Now Bar is partner BD, not an API** (as of One UI 8.0): per-app allowlist keys in the
+  system settings table (`key_now_bar_com_nhn_android_search=1` — Naver, on the KR device);
+  hand-writing our own key + re-posting did nothing; no "Live updates" toggle exists in
+  per-app notification settings for third parties.
+- Sidebar candidate: Samsung Remote Test Lab's Remote Debug Bridge = full local adb to remote
+  Galaxy hardware — the whole emulator automation playbook works unchanged against a phone
+  in Korea.
+- Screenshots: a5-console-s25ultra-promotion-no, a5-shade-s25ultra, a5-lockscreen-s25ultra,
+  a5-oneui-notif-settings.
+
+**Part 2 — S26 Ultra (One UI 8.5, sdk_full=36.1, tested 2026-07-09):** Samsung took the QPR
+one generation later. `canPostPromotedNotifications()=true`, and the OS genuinely grants
+`FLAG_PROMOTED_ONGOING` to our unmodified APK — promoted ordering visible (pinned top of
+shade). But still no Pixel-style chip, no lock-screen card, and the **Now Bar never showed
+our delivery** (only Samsung's "Now brief"). Caveat: managed RTL unit, "in our testing"
+framing. Screenshots: a5-console-s26ultra-promotion-yes, a5-shade-s26ultra,
+a5-lockscreen-s26ultra, a5-nowbar-settings-s26, a5-oneui85-notif-settings.
+
+**Part 3 — A37 5G (also One UI 8.5/36.1) + the smoking gun:** mid-ranger, same split verdict
+(flag granted, no lock-screen surface). Then the find: **Settings → Lock screen and AOD →
+Live notifications** (searchable as "live notification", NOT "Now bar") — the page promises
+lock screen + status bar + top-of-panel, illustrates the Now Bar pill, then lists a fixed
+six-app allowlist (Audio broadcast, Emergency sharing, Google Finance, Maps, Media player,
+Sports from Google). DropTrack absent while its promoted delivery is live; the page's own
+"Not seeing Live notifications?" criteria (notification perms ×3) are all satisfied.
+Airtight, screenshot-backed line for the chapter: **One UI 8.5 accepts Google's promotion
+contract, ships the minor surfaces, and reserves the headline ones for a hardcoded list.**
+Apple = public API everywhere; Google = public API on its own hardware; Samsung = framework
+yes, stage by invitation. Screenshots: a5-console-a37-promotion-yes, a5-lockscreen-a37,
+a5-live-notifications-settings-a37 (THE shot), a5-live-notifications-list-a37,
+a5-live-notif-tip-a37.
+
 ## 8. Gotchas
 
 - (Curated from GOTCHAS.md at Phase 5.)

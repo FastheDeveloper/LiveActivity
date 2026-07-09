@@ -120,11 +120,11 @@ Phase 0 done: both platforms build clean from a fresh prebuild.
 ### Screenshots needed (running list)
 
 - [x] Phase 1: lock-screen card (simulator)
-- [x] Phase 1: Dynamic Island compact
-- [x] Phase 1: Dynamic Island expanded (long-press)
+- [x] Phase 1: Dynamic Island compact (also real hardware — hero-island-compact.png)
+- [x] Phase 1: Dynamic Island expanded (long-press) (also real hardware — hero-island-expanded.png)
 - [x] Phase 2/3: mid-flow status change (before/after Advance step)
 - [x] Phase 3: rider reassignment state
-- [ ] Phase 4: push-driven update with app closed (physical iPhone)
+- [x] Phase 4: push-driven update with app closed (physical iPhone) — done in TSK-3
 - [x] A2: Android notification shade with ProgressStyle segmented bar
 - [x] A3: Android status-bar chip + lock-screen promoted placement
 
@@ -406,3 +406,400 @@ re-fired a reassign to refresh it before the final capture) and
 trailing ETA, bottom row with the orange 🔄 courier treatment). **Phase 2/3 fully done —
 the iOS local story is complete.** Design note for the article: at step 5 the center status
 text and the stops label both say "2 stops away"; a real app would vary one.
+
+---
+
+## 2026-07-09 — A5: Samsung, hands-on after all (Remote Test Lab)
+
+Plan A (research-only) got upgraded: Samsung's **Remote Test Lab** gave us a real
+**Galaxy S25 Ultra (SM-S938N, Korea)** in the browser, and its **Remote Debug Bridge**
+turned out to be a local adb tunnel — download a binary, run it, click the RTL sidebar
+button, and `adb devices` shows the remote phone (`localhost:<port>`). From there the whole
+emulator playbook worked over the Pacific: `pm grant`, `input tap`, `screencap`, `dumpsys`.
+(Two rdb traps: it's an x86_64 binary — Rosetta, slow first launch; it ignores CLI args and
+just starts its server, and TWO instances fight over the web client — run exactly one.
+Also: 25 MB arm64-only release APK via `-PreactNativeArchitectures=arm64-v8a`, since a
+remote device can't reach Metro.)
+
+### 📝 ARTICLE — the Samsung findings (the OEM chapter writes itself)
+
+1. **Samsung's "Android 16" is base API 36, not the QPR.** `ro.build.version.sdk_full=36.0`,
+   One UI 8.0, build BP2A.250605.031.A3 (June 2025 base). Everything we learned about the
+   36 vs 36.1 split applies to real flagship hardware in July 2026: the promotion-request
+   pipeline simply does not exist on a Galaxy S25 Ultra.
+2. **`canPostPromotedNotifications()` → false** (console row: "Live Updates promotion: no"),
+   **but `hasPromotableCharacteristics()` → TRUE** — on the base-36 Pixel emulator the same
+   APK returned false. Samsung has backported enough of the promotion framework to
+   recognize the request extra, without shipping the user-facing pipeline. Same version
+   number, three different answers across three devices.
+3. **ProgressStyle renders, Samsung-styled**: orange bar, tracker truck riding at 55%, the
+   35% milestone Point drawn as a square notch (Pixel: dot), and the future `setWhen`
+   rendered as absolute "2:46 PM" (Pixel: relative "in 24m").
+4. **No promoted surfaces anywhere**: no status-bar chip (just the classic small icon), no
+   lock-screen card (icon row only — and NOT a config issue: per-app settings show Lock
+   screen ✓ + "Show always"), and **no Now Bar pickup**.
+5. **The Now Bar is a partner allowlist, not a pipeline.** Samsung's system settings table
+   has per-app keys — `key_now_bar_com_nhn_android_search=1`,
+   `support_nowbar_naver_sports=1` (Naver = Korean partner). Writing
+   `key_now_bar_com_fasarticle_droptrack=1` and re-posting did nothing — enforcement lives
+   in Samsung's service, not the key. One UI 8.0's per-app notification settings expose no
+   "Live updates" toggle for third parties at all.
+
+Bottom line for the article: in mid-2026, "Android 16 Live Updates" on the best-selling
+Android flagship means *a nicely restyled ordinary notification*. The chip + lock-screen
+promotion story is Pixel-QPR-only until Samsung takes the 36.1 update; Now Bar access is
+business development, not an API.
+
+### Screenshots
+
+- `a5-console-s25ultra-promotion-no.png` — the console verdict on real hardware
+- `a5-shade-s25ultra.png` — ProgressStyle in One UI clothing (square milestone, tracker)
+- `a5-lockscreen-s25ultra.png` — no card, no Now Bar; status-bar truck icon only
+- `a5-oneui-notif-settings.png` — One UI per-app page: no Live updates surface
+
+---
+
+## 2026-07-09 (later) — A5 part 2: the S26 Ultra rewrites the Samsung conclusion
+
+User spotted Samsung marketing about the Now Bar on newer devices, so we ran a second RTL
+session on a **Galaxy S26 Ultra (SM-S947U)**. Worth every credit — the story flipped:
+
+- **`sdk_full=36.1`, One UI 8.5** (build BP4A.251205.006, Dec 2025). Samsung DID take the
+  QPR — one hardware generation after Google shipped it.
+- **`canPostPromotedNotifications()=true`** — the dev-console row flips to yes. Same APK.
+- **The OS grants the promotion for real**: `dumpsys notification` shows our notification
+  carrying **`FLAG_PROMOTED_ONGOING`** — a third-party app, no partnership, no allowlist key.
+- Promoted *effects* visible: pinned to the top of the shade, truck small-icon in the
+  status bar. ProgressStyle renders in the same One UI style as 8.0 (square milestone notch).
+- **But no Pixel-style chip pill, no lock-screen card, and the Now Bar never picked up our
+  delivery** — it showed only Samsung's own "Now brief" throughout (tap, swipe, fresh-update-
+  then-lock all tried). And One UI 8.5's per-app notification settings STILL have no "Live
+  updates" toggle. So the framework promotion is granted, but Samsung's flagship promoted
+  surface stays curated. Caveat for the article: RTL units are managed devices ("belongs to
+  your organization") and we couldn't rule out policy/regional factors — frame as "in our
+  testing" rather than absolute.
+
+The three-generation arc for the OEM chapter: **S25 (One UI 8.0) = pipeline absent →
+S26 (One UI 8.5) = pipeline present, promotion granted, but the Now Bar still doesn't
+surface third-party Live Updates → the open question is whether Samsung ever will.**
+Meanwhile the same APK on a QPR Pixel gets chip + lock-screen card automatically. That
+contrast — Apple: public API; Google: public API on its own hardware; Samsung: framework
+yes, flagship surface curated — is the article's sharpest paragraph.
+
+RTL automation notes: the second session's device came up in **landscape**, which silently
+broke every tap computed from portrait screenshots (the misdirected taps opened Galaxy AI
+onboarding) — check `wm size`/orientation before driving, `settings put system
+user_rotation 0` to force portrait. RTL lock screens also aggressively doze: `svc power
+stayon true` before lock-screen work.
+
+### Screenshots
+
+- `a5-console-s26ultra-promotion-yes.png` — the row flips to yes on 36.1
+- `a5-shade-s26ultra.png` — promoted ordering: pinned top-of-shade, ProgressStyle bar
+- `a5-lockscreen-s26ultra.png` — Now Bar present but showing only Samsung's "Now brief"
+- `a5-nowbar-settings-s26.png`, `a5-oneui85-notif-settings.png` — settings surfaces
+
+---
+
+## 2026-07-09 (evening) — A5 part 3: the mid-ranger and the smoking gun
+
+Third RTL session, **Galaxy A37 5G (SM-A376E)** — the "where most Samsung users live" data
+point. Same One UI 8.5 / `sdk_full=36.1` as the S26 Ultra (mid-rangers get 8.5 too), and
+the same split verdict: console "promotion: yes", **`FLAG_PROMOTED_ONGOING` granted** to
+our APK, truck in the status bar — but nothing on the lock screen. (This stripped RTL unit
+has no Samsung account and no Clock app, so no Now Brief pill and no timer control test.)
+
+### The smoking gun: Samsung's own "Live notifications" settings page
+
+Searching Settings for "live notification" (a search "Now bar" doesn't surface!) found
+**Lock screen and AOD → Live notifications** on One UI 8.5:
+
+- The page description promises exactly the three promoted surfaces: *"Live notifications
+  will appear on the Lock screen, on the status bar, and at the top of the notification
+  panel"* — with an illustration of the Now Bar pill, status chip, and top-of-panel card.
+- Below it: a **fixed six-entry allowlist** — Audio broadcast, Emergency sharing, Google
+  Finance, Maps, Media player, Sports from Google. Per-app toggles. **DropTrack is not in
+  the list** — while its PROMOTED_ONGOING delivery is live that very second.
+- The "Not seeing Live notifications?" tip claims the criteria are just notification
+  permissions (allow + lock screen + show content) — **all three of which our app has**.
+  Samsung's stated criteria are satisfied; the list is curated beyond them.
+
+So the One UI 8.5 conclusion is now airtight and quotable: the OS grants Google's promotion
+flag to any third-party app, delivers the top-of-shade + status-bar-icon parts, and
+reserves the headline surfaces (lock screen / Now Bar) for a hardcoded list of Google and
+Samsung integrations. Two devices (flagship + mid-range), same behavior, and the settings
+UI itself documents the gap between promise and list.
+
+### Screenshots
+
+- `a5-console-a37-promotion-yes.png`, `a5-lockscreen-a37.png` (no pill at all — no Samsung
+  account on this unit)
+- `a5-live-notifications-settings-a37.png` — THE shot: the promise, the illustration, the
+  six-app list, no DropTrack
+- `a5-live-notifications-list-a37.png`, `a5-live-notif-tip-a37.png` — the criteria tip
+
+---
+
+## 2026-07-09 (later) — TSK-3: APNs push-driven updates, on a real iPhone 14 Pro
+
+The last unproven claim in the iOS half of the article: **a server can drive the Live
+Activity while the app is not running at all.** Everything before this was ActivityKit
+calling itself from inside our own process. Verified today on Damisa's iPhone 14 Pro
+(iOS 26.5), with the DropTrack process confirmed dead.
+
+### The three-line change that makes it possible
+
+`pushType: nil` → `pushType: .token` in `Activity.request`. That's the entire API surface.
+Everything else is plumbing:
+
+- APNs mints a token **per activity**, not per device — and it arrives *asynchronously,
+  after* `request()` returns. Reading `activity.pushToken` immediately gives nil. The
+  correct consumer is `for await token in activity.pushTokenUpdates`, an `AsyncSequence`
+  that also re-fires whenever the system rotates the token. We forward each one to JS as an
+  `onPushTokenReceived` event (plus an `NSLog`, see below).
+- The app needs the **`aps-environment` entitlement**. Without it, `Activity.request`
+  succeeds, the activity runs fine on local updates, and `pushTokenUpdates` simply never
+  yields. No error, no log. Added to `ios.entitlements` in `app.json`.
+
+### `scripts/push-update.mjs` — a dependency-free APNs client
+
+Zero npm deps: ES256 JWT via `node:crypto`, HTTP/2 via `node:http2` (APNs speaks HTTP/2
+only — `fetch()` cannot reach it). Two traps worth the article's ink:
+
+- `crypto.sign` emits **DER** by default; JOSE wants raw r‖s. Without
+  `dsaEncoding: 'ieee-p1363'` the JWT is well-formed and simply never authenticates.
+- The topic is `<bundle-id>.push-type.liveactivity`, not the bundle id, with
+  `apns-push-type: liveactivity`.
+
+**The debugging trick that saved the session:** before touching a device, push to the
+sandbox with a *fake* device token. `400 BadDeviceToken` proves the `.p8`, key id, team id
+and JWT are all correct — APNs got far enough to look the token up and not find it.
+`403 InvalidProviderToken` would mean the key is wrong. That splits "my auth is broken"
+from "my token is broken" with zero device involvement, and it's the first thing I'd tell
+anyone wiring up APNs.
+
+### Getting a token off a wired-only iPhone
+
+Two device-harness facts, both new:
+
+1. **A Debug build on a wired-only phone can't reach Metro.** `react-native-xcode.sh` bakes
+   the Mac's *LAN* IP into `ip.txt` inside the .app. Phone not on that Wi-Fi ⇒
+   `No script URL provided … unsanitizedScriptURLString = (null)`. iOS has no `adb reverse`.
+   Fix: `--configuration Release`, which embeds `main.jsbundle` — and which is the *more
+   honest* harness for this test anyway, because the app can then be fully force-quit with
+   no Metro socket keeping anything alive.
+2. **`__DEV__` is false in Release, so the deep-link test driver is stripped.** The
+   simulator trick (`simctl openurl` → `Linking` `'url'` event) doesn't port either:
+   `devicectl process launch --payload-url` *cold-starts* the app, so the URL arrives via
+   `Linking.getInitialURL()` and the `'url'` event never fires. Handled both; the Release
+   run still needed one human tap on Start.
+
+Because RN's `console.log` goes to Metro and there was no Metro, the push token is also
+written with `NSLog`, which `xcrun devicectl device process launch --console` streams back
+over the wire. That's how the token was captured.
+
+### The result
+
+Activity `3095ACA0…`, token `80875cb1…` (160 hex chars). Then, with `devicectl device info
+processes` confirming **DropTrack's own pid was gone** (only `DropTrackWidgets.appex` and
+the system's `liveactivitiesd` alive):
+
+| Push | `content-state` | APNs |
+|------|-----------------|------|
+| step 4 | "2 stops away", Ade | 200 |
+| step 5 | "Next stop: you", **Tunde**, `riderReassigned: true` | 200 |
+| step 6 | "Arriving now 🛵", 0 stops, 95% | 200 |
+
+Lock screen and Dynamic Island tracked every one. Rider reassignment — the state that forced
+`courierName` out of the static attributes back in Phase 2 — round-trips through APNs intact.
+
+**200 from APNs is not proof of anything on the device.** A `content-state` whose shape
+doesn't decode into the widget's `ContentState` is dropped *silently* by iOS: no error, no
+log, the card just keeps showing the old state. The 200 only says Apple accepted the bytes.
+The verification is eyes on the lock screen, every time. (`aps.timestamp` is likewise a
+silent ordering guard — an older timestamp than the last applied update is discarded.)
+
+Also confirmed: Swift `Date` in the payload decodes as **seconds since 2001**, not the Unix
+epoch (`APPLE_EPOCH_OFFSET = 978_307_200`). A raw `Date.now()/1000` puts the ETA in 2057.
+
+### Screenshots needed (running list)
+
+- [x] Phase 4 / TSK-3: push-driven update with app closed (physical iPhone 14 Pro)
+- [ ] TSK-4: Dynamic Island compact + expanded on real hardware (activity left running)
+
+### Postscript: tapping the card lands you in an app with amnesia
+
+Immediately after the push test, a real bug surfaced by using the thing like a user: **tap
+the Dynamic Island or the lock-screen card, and the app opens on "Not tracking" with every
+control disabled** — while the card is still visibly on screen.
+
+Nothing was broken on the device. Live Activities are owned by the system, not by our
+process; they survive force-quit and relaunch. What died was React state. `activityId` lived
+only in `useState`, and the launch that the *user triggered by tapping the card* is a cold
+start. The app therefore had no handle on an activity that was running perfectly well —
+`Activity.activities` still listed it, and an APNs push still returned 200 (a dead activity
+returns 410, which is how we proved it was alive before changing a line).
+
+The fix is to treat the system as the source of truth on launch: a new
+`getRunningActivities()` enumerates `Activity<DeliveryAttributes>.activities`, and App.tsx
+re-attaches on mount — recovering the courier, the reassignment flag, the push token, and
+the current step by matching `activity.content.state.status` back onto `STEPS`. While there,
+we re-subscribe to `pushTokenUpdates`: the previous process's `for await` loop died with it,
+so a token rotation after relaunch would otherwise go unnoticed. Also added `endAll()`, the
+dev helper the simulator playbook has wanted since Phase 2.
+
+Verified the way it should be: started a fresh activity (new id `A129AA87…`, and note a
+**brand-new token** `800ed06c…` — per-activity, exactly as advertised), pushed it to
+"2 stops away" over APNs, killed the app process, and cold-started it. The re-subscribe
+fired on launch and APNs re-issued the same token against the recovered activity. The
+console came back attached instead of amnesiac.
+
+Worth its own paragraph in the article: the API hands you an `activityId` and it is very
+easy to assume that id is yours to keep. It isn't. The activity outlives the variable, and
+the one moment your user is most likely to open the app — tapping the live card — is
+precisely the moment your in-memory copy of that id doesn't exist.
+
+---
+
+## 2026-07-09 (later) — The dispatcher portal: driving the phone from a browser
+
+Copying a 160-character hex token out of a terminal to run a CLI got old fast. Built an
+Expo **web** dispatcher console that drives the phone's Live Activity from a browser — pick a
+step, a courier, toggle a reassignment, click, and the lock-screen card changes with the app
+force-quit. Spec + plan in `docs/superpowers/`.
+
+### The shape of it, and why it isn't just a web page
+
+A browser **cannot** talk to APNs: it's HTTP/2-only, exposes no CORS, and signing needs the
+`.p8` private key, which must never reach a web page. So the portal is two pieces:
+
+```
+iPhone ──NSLog──> devicectl --console ──scrape──> dispatch-server (127.0.0.1:8787)
+                                                    │  registry: activityId → token
+browser (expo web) <──SSE /events──────────────────┘
+       └──POST /push──> dispatch-server ──ES256 JWT + HTTP/2──> APNs ──> widget
+```
+
+- `scripts/apns.mjs` — the signing + HTTP/2 core, extracted from `push-update.mjs` (which is
+  now a thin CLI over it). One implementation, unit-tested: the JWT test asserts the
+  signature is exactly 64 bytes, pinning the raw-r‖s-vs-DER gotcha.
+- `scripts/dispatch-server.mjs` — zero-dependency Node server, binds `127.0.0.1` only. Spawns
+  `devicectl … --console`, scrapes the `[DropTrack] push token …` NSLog line, and keeps a
+  `Map<activityId, token>`. Streams tokens to the browser over SSE; signs and sends pushes on
+  `POST /push`. The `.p8` never leaves the process — no route returns key material.
+- `delivery.ts` — the delivery script (`STEPS`, `toDeliveryState`) extracted from `App.tsx` so
+  the phone app and the web console run the identical script. That shared script is the whole
+  reason this is Expo web and not a static HTML page.
+- `DispatcherConsole.tsx` — the web UI (`App.tsx` renders it when `Platform.OS === 'web'`).
+
+### The gotcha the build surfaced: two different "eta"s
+
+The shared `toDeliveryState()` produces the **native-bridge** shape: `etaEpochMillis` in Unix
+milliseconds, which the Swift `DeliveryStateRecord` converts to a `Date`. But an APNs push's
+`content-state` is decoded **directly** by the widget's Codable `ContentState`, which expects
+a field named `eta` in **seconds since 2001** and has no `etaEpochMillis`. Send the
+native-bridge shape over APNs and you get the classic silent failure — APNs returns 200, iOS
+drops the update, nothing logs. The fix lives in the server (`toContentState`), the one place
+that is unambiguously the APNs boundary: it strips `etaEpochMillis` and emits Apple-epoch
+`eta`. The CLI never hit this because it always built its own `eta` by hand.
+
+### Verified
+
+- The web bundle compiles and bundles under react-native-web (the full
+  `App → DispatcherConsole → dispatchClient → delivery` chain).
+- Browser-shaped push (a `DeliveryState` with `etaEpochMillis`, no `eta`) → server translates
+  → APNs returns 400 BadDeviceToken for a fake token, i.e. the content-state structure is
+  accepted; the translation works end-to-end.
+- Opt-in `APNS_INTEGRATION=1` test proves the real key/team/kid authenticate (400, not 403).
+- **Live device leg confirmed on the iPhone 13 Pro (wired):** the server scraped the token off
+  the device console (activity `C44A2514…`, token `80028067…`), the browser console drove a
+  push, and the lock-screen card updated. Two connection lessons: (1) `expo run:ios` wants the
+  hardware UDID (`00008110-…`) while the dispatch server's `devicectl` wants the CoreDevice id
+  (`76E675DA-…`) — different namespaces for the same phone; (2) a **wireless** device drops the
+  `devicectl --console` session (`exited code 1`) mid-run, so token intake needs a **wired**
+  connection. Release build required (embedded JS): a Debug build red-boxes with no Metro, and
+  the app must run standalone anyway since the server cold-starts it.
+
+### Compose-then-send
+
+First pass fired a push the instant you clicked a step. Reworked to a three-step compose flow —
+pick courier (+ optional reassignment), stage an update (step or "Delivered"), then press a
+single **Send notification** button. Nothing hits APNs until that press. Screenshot:
+`screenshots/tsk3-web-dispatcher.png`.
+
+The portal is test tooling, not article evidence — it makes TSK-4/TSK-5 easier to drive.
+
+---
+
+## 2026-07-09 — TSK-4: hero shots on the iPhone 14 Pro (real Dynamic Island)
+
+Forward-facing images for the top of the article, captured on Damisa's iPhone 14 Pro (iOS
+26.5) driven from the web dispatcher into "2 stops away" (5/7 segments, courier Ade,
+ETA 15:36). All three show the new segmented progress bar rendering identically across
+surfaces:
+
+- `screenshots/hero-island-expanded.png` — expanded Dynamic Island (long-press). The primary
+  hero: bicycle, status, ETA, segmented bar, courier row. Most legible "this is a Live
+  Activity" shot.
+- `screenshots/hero-lockscreen.png` — lock-screen card, clean.
+- `screenshots/hero-island-compact.png` — compact island pill (bicycle + 70%) over Safari,
+  the glanceable state.
+
+Suggested blog order: expanded island → lock-screen card → compact pill. (A fourth capture
+caught iOS's periodic "Allow Live Activities?" confirmation over the card — discarded; the
+lock-screen hero is the clean re-shoot.)
+
+**Bonus surface — the Mac menu bar** (`screenshots/hero-mac-menubar.png`): with the same
+Apple ID, the Live Activity surfaces on macOS's menu bar via Continuity, with **zero extra
+code** — it's the same push-driven activity, and the 7-segment bar renders there too (shot
+shows "Picked up your order" = 3/7). A nice "it follows you across devices" beat: one APNs
+push, and the widget shows up on phone lock screen, Dynamic Island, and Mac.
+
+
+---
+
+## 2026-07-09 — TSK-5: Android FCM push-driven Live Updates (the asymmetry, proven)
+
+The Android counterpart to TSK-3, and the more instructive half. **iOS:** APNs → the system →
+the widget; app code never runs. **Android:** there is no system-managed remote update — a
+data-only FCM message wakes a `FirebaseMessagingService` and OUR code re-posts the
+notification. The app is the updater.
+
+### Verified end-to-end on the s25 emulator (android-36 google_apis, has Play Services)
+
+Started a delivery (local notification posts), pressed **Home** (app confirmed NOT foreground
+via `dumpsys activity`), then sent a data-only FCM push from `fcm.mjs`. The notification
+updated to the pushed state — `dumpsys notification` showed `android.title="2 stops away"`,
+`android.text="Tunde · 2 stops away"`, and the shade rendered the ProgressStyle bar + truck
+tracker at ~70% with the milestone point at 35%. Screenshot:
+`screenshots/tsk5-android-fcm-push.png`. FCM returned 200; the service's `onMessageReceived`
+ran in-process and re-posted. (Base 36 → no promotion surfaces, as expected; promotion itself
+was established on Samsung One UI 8.5 in A5.)
+
+### What shipped
+- `DeliveryNotifier.kt` — notification builder extracted from the module so both the JS path
+  and the FCM service post an identical Live Update from plain params.
+- `DroptrackFcmService.kt` — `onMessageReceived` rebuilds from the data payload (it has no
+  access to the module's in-memory map — separate entry point); `onNewToken` logs for the scrape.
+- `getFcmToken()` / `onFcmTokenReceived` (JS + Kotlin), mirroring the iOS token API.
+- `plugins/withAndroidFcm.js` — config plugin placing `google-services.json` + the
+  `google-services` gradle wiring through CNG.
+- `scripts/fcm.mjs` — zero-dep FCM HTTP v1 client (service-account RS256 JWT → OAuth token →
+  send). The dispatch server now routes by platform and scrapes the FCM token from `adb logcat`;
+  the web console has an iOS/Android toggle.
+
+### Article beats
+- **The push asymmetry** above — the single best iOS-vs-Android contrast in the piece.
+- **Data vs notification messages:** only a data-only message routes to `onMessageReceived`
+  when backgrounded; a `notification` message is swallowed by the system tray. High priority
+  wakes it promptly.
+- **Auth:** FCM v1 uses a service-account RS256 JWT exchanged for an OAuth token (heavier than
+  APNs' `.p8` ES256). And FCM distinguishes a **malformed** token (`400 INVALID_ARGUMENT`)
+  from an **unregistered** one (`404 UNREGISTERED`), where APNs returns a single
+  `BadDeviceToken`.
+- **Reliability gap:** data messages can be dropped under Doze or after a force-kill — unlike a
+  system-owned iOS Live Activity. We test backgrounded (Home), not swiped-away, and document
+  the gap rather than engineering around it.
+
+### Screenshots
+- `screenshots/tsk5-android-fcm-push.png` — the shade after a remote FCM push, app backgrounded.
