@@ -41,3 +41,18 @@ test('toAppleEpochSeconds subtracts the 2001 reference offset', () => {
   // One hour later is 3600.
   assert.equal(toAppleEpochSeconds(new Date('2001-01-01T01:00:00Z')), 3600);
 });
+
+// Opt-in: needs network + the real .p8. Run with APNS_INTEGRATION=1.
+// Proves key + key id + team id + JWT encoding are all correct WITHOUT a device:
+// a syntactically valid but unregistered token must come back 400 BadDeviceToken.
+test('sandbox rejects a fake token with BadDeviceToken (auth is correct)', { skip: process.env.APNS_INTEGRATION !== '1' }, async () => {
+  const { pushLiveActivity } = await import('./apns.mjs');
+  const fakeToken = 'ab'.repeat(32);
+  const { status, reason } = await pushLiveActivity({
+    token: fakeToken,
+    contentState: { status: 'test', progress: 0, eta: 0, stopsRemaining: 0, courierName: 'x', riderReassigned: false },
+    event: 'update',
+  });
+  assert.equal(status, 400);
+  assert.equal(reason, 'BadDeviceToken'); // NOT InvalidProviderToken (403 = bad key)
+});
