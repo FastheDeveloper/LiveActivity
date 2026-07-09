@@ -15,48 +15,26 @@ import {
 } from 'react-native';
 
 import * as DroptrackLive from './modules/droptrack-live';
-import type { DeliveryState } from './modules/droptrack-live';
+import { STEPS, DELIVERED, ORDER, RIDERS, toDeliveryState, type Rider } from './delivery';
+import DispatcherConsole from './DispatcherConsole';
 
-// The scripted delivery. Each step is a full snapshot of the dynamic state —
-// exactly what a real backend would push, minus the courier's actual GPS.
-const STEPS: { status: string; progress: number; stopsRemaining: number; etaMinutes: number }[] = [
-  { status: 'Order placed', progress: 0.05, stopsRemaining: 4, etaMinutes: 25 },
-  { status: 'Courier assigned', progress: 0.15, stopsRemaining: 4, etaMinutes: 22 },
-  { status: 'Picked up your order', progress: 0.35, stopsRemaining: 3, etaMinutes: 18 },
-  { status: 'On the way', progress: 0.55, stopsRemaining: 2, etaMinutes: 12 },
-  { status: '2 stops away', progress: 0.7, stopsRemaining: 2, etaMinutes: 8 },
-  { status: 'Next stop: you', progress: 0.85, stopsRemaining: 1, etaMinutes: 4 },
-  { status: 'Arriving now 🛵', progress: 0.95, stopsRemaining: 0, etaMinutes: 1 },
-];
-const DELIVERED = { status: 'Delivered 🎉', progress: 1, stopsRemaining: 0, etaMinutes: 0 };
-
-const ORDER = { orderId: 'DT-4521' };
-// Riders the dispatcher can swap between mid-delivery.
-const RIDERS = ['Ade', 'Tunde', 'Chioma'];
 const AUTO_STEP_MS = 5000;
 
 // RN's SafeAreaView deprecation notice — known, harmless in this dev harness,
 // and it photobombs every article screenshot.
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 
-type Rider = { name: string; justReassigned: boolean };
-
-function toDeliveryState(step: (typeof STEPS)[number], rider: Rider): DeliveryState {
-  return {
-    status: step.status,
-    progress: step.progress,
-    stopsRemaining: step.stopsRemaining,
-    etaEpochMillis: Date.now() + step.etaMinutes * 60_000,
-    courierName: rider.name,
-    riderReassigned: rider.justReassigned,
-  };
-}
-
 export default function App() {
+  // Web has no Live Activities — it's the dispatcher that DRIVES a device.
+  // This early return precedes every hook below; safe because the condition is
+  // constant per platform, so hook order never changes between renders.
+  if (Platform.OS === 'web') return <DispatcherConsole />;
+
   const [activityId, setActivityId] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [rider, setRider] = useState<Rider>({ name: RIDERS[0], justReassigned: false });
   const [auto, setAuto] = useState(false);
+  const [pushToken, setPushToken] = useState<string | null>(null);
   const stepRef = useRef(stepIndex);
   stepRef.current = stepIndex;
   const riderRef = useRef(rider);
@@ -80,6 +58,34 @@ export default function App() {
   const fail = (err: unknown) =>
     Alert.alert('Live activity error', err instanceof Error ? err.message : String(err));
 
+  // TSK-3: APNs issues a fresh token per activity, seconds after start.
+  // Log the full hex so it can be copy-pasted into scripts/push-update.mjs.
+  useEffect(() => {
+    const sub = DroptrackLive.onPushTokenReceived(({ activityId: id, token }) => {
+      console.log(`[push] token for activity ${id}:\n${token}`);
+      setPushToken(token);
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Live Activities belong to the system, not to this process: they survive
+  // force-quit and relaunch. Tapping the lock-screen card or the Dynamic Island
+  // COLD-STARTS the app, so without this the console would show "Not tracking"
+  // with every button disabled while the card is still on screen — and the only
+  // handle on the running activity (its id) would be lost for good.
+  useEffect(() => {
+    void DroptrackLive.getRunningActivities().then((running) => {
+      const activity = running[0];
+      if (!activity) return;
+      setActivityId(activity.activityId);
+      setRider({ name: activity.courierName, justReassigned: activity.riderReassigned });
+      if (activity.pushToken) setPushToken(activity.pushToken);
+      // Recover which step we were on from the state the system held for us.
+      const index = STEPS.findIndex((s) => s.status === activity.status);
+      if (index >= 0) setStepIndex(index);
+    });
+  }, []);
+
   const start = async () => {
     try {
       const freshRider = { name: RIDERS[0], justReassigned: false };
@@ -87,6 +93,8 @@ export default function App() {
       setRider(freshRider);
       setActivityId(id);
       setStepIndex(0);
+      setPushToken(null); // the new activity gets its own token
+
     } catch (err) {
       fail(err);
     }
@@ -179,10 +187,14 @@ export default function App() {
   };
   useEffect(() => {
     if (!__DEV__) return;
-    const sub = Linking.addEventListener('url', ({ url }) => {
-      const action = url.split('/').pop() ?? '';
-      actionsRef.current[action]?.();
-    });
+    const run = (url: string) => actionsRef.current[url.split('/').pop() ?? '']?.();
+    const sub = Linking.addEventListener('url', ({ url }) => run(url));
+    // A physical device is driven by `devicectl process launch --payload-url`,
+    // which COLD-STARTS the app: the URL then arrives as the initial URL and
+    // never fires the 'url' event. The simulator's `openurl` hits a running
+    // app and only fires the event. Handle both or device driving silently
+    // does nothing.
+    void Linking.getInitialURL().then((url) => url && run(url));
     return () => sub.remove();
   }, []);
 
@@ -213,6 +225,13 @@ export default function App() {
           <Row label="Live Updates promotion" value={promoted ? 'yes' : 'no'} good={promoted} />
         )}
         <Row label="Activity" value={running ? activityId!.slice(0, 8) + '…' : 'none'} good={running} />
+        {Platform.OS === 'ios' && (
+          <Row
+            label="Push token"
+            value={pushToken ? pushToken.slice(0, 8) + '… (see Metro log)' : 'none'}
+            good={pushToken != null}
+          />
+        )}
       </View>
 
       <View style={styles.card}>

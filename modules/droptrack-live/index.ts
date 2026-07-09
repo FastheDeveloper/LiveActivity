@@ -1,7 +1,14 @@
-import DroptrackLiveModule from './src/DroptrackLiveModule';
-import type { DeliveryInfo, DeliveryState } from './src/DroptrackLive.types';
+import { Platform } from 'react-native';
 
-export type { DeliveryInfo, DeliveryState };
+import DroptrackLiveModule from './src/DroptrackLiveModule';
+import type {
+  DeliveryInfo,
+  DeliveryState,
+  PushTokenEvent,
+  RunningActivity,
+} from './src/DroptrackLive.types';
+
+export type { DeliveryInfo, DeliveryState, PushTokenEvent, RunningActivity };
 
 /**
  * Whether this device can show live delivery tracking at all
@@ -38,6 +45,47 @@ export async function startDelivery(
   state: DeliveryState
 ): Promise<string> {
   return DroptrackLiveModule.startDelivery(info, state);
+}
+
+/**
+ * iOS only: subscribe to per-activity APNs push tokens. The token shows up
+ * asynchronously after startDelivery — sometimes seconds later — and may be
+ * rotated by the system, so treat every event as the new source of truth.
+ * Returns a remove()-able subscription; no-ops on Android.
+ */
+export function onPushTokenReceived(
+  listener: (event: PushTokenEvent) => void
+): { remove: () => void } {
+  // isSupported() is also true on Android 16+, where this event doesn't exist.
+  if (Platform.OS !== 'ios' || !isSupported()) return { remove: () => {} };
+  return DroptrackLiveModule.addListener('onPushTokenReceived', listener);
+}
+
+/**
+ * iOS only: current push token for an activity, or null if APNs hasn't
+ * issued one yet (or the platform doesn't support push-driven activities).
+ */
+export async function getPushToken(activityId: string): Promise<string | null> {
+  if (!DroptrackLiveModule.getPushToken) return null;
+  return DroptrackLiveModule.getPushToken(activityId);
+}
+
+/**
+ * Activities still running from a previous launch of the app.
+ *
+ * Live Activities are owned by the system, not by your process — they survive
+ * force-quit, JS reloads and relaunches. Tapping the lock-screen card or the
+ * Dynamic Island cold-starts the app, so call this on mount and re-attach, or
+ * the UI will claim nothing is tracking while the card is plainly on screen.
+ */
+export async function getRunningActivities(): Promise<RunningActivity[]> {
+  if (!DroptrackLiveModule.getRunningActivities) return [];
+  return DroptrackLiveModule.getRunningActivities();
+}
+
+/** Dev helper: end every running activity immediately. */
+export async function endAll(): Promise<void> {
+  await DroptrackLiveModule.endAll?.();
 }
 
 /** Push a new state onto the lock screen / Dynamic Island. */

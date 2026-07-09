@@ -11,6 +11,27 @@ export type DeliveryInfo = {
 };
 
 /**
+ * iOS only. Emitted when APNs issues (or rotates) the push token for one
+ * activity. Tokens are PER-ACTIVITY: each startDelivery mints a new one,
+ * and it is only valid for updating that specific activity.
+ */
+export type PushTokenEvent = {
+  activityId: string;
+  /** Hex-encoded APNs token — paste into scripts/push-update.mjs */
+  token: string;
+};
+
+/**
+ * A live activity that is already running — recovered from the system rather
+ * than from our own memory. `pushToken` is '' until APNs issues one.
+ */
+export type RunningActivity = DeliveryState & {
+  activityId: string;
+  orderId: string;
+  pushToken: string;
+};
+
+/**
  * The dynamic part of the activity — every update sends a fresh one.
  * Keep it SMALL: iOS rejects content states over 4 KB.
  */

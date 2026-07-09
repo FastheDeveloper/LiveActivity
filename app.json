@@ -17,7 +17,8 @@
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.com.fasarticle.droptrack"
-        ]
+        ],
+        "aps-environment": "development"
       }
     },
     "android": {
