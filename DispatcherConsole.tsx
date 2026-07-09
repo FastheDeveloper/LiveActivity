@@ -4,12 +4,19 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { STEPS, DELIVERED, RIDERS, toDeliveryState, type Rider } from './delivery';
 import { connectDispatch, sendPush, type PushResult } from './src/dispatchClient';
 
+// The "delivered" option ends the activity; every other selection is an update.
+const DELIVERED_KEY = 'delivered';
+
 export default function DispatcherConsole() {
   const [online, setOnline] = useState(false);
   const [activityId, setActivityId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [rider, setRider] = useState<Rider>({ name: RIDERS[0], justReassigned: false });
-  const [reassignNext, setReassignNext] = useState(false);
+  const [courier, setCourier] = useState<string>(RIDERS[0]);
+  const [reassign, setReassign] = useState(false);
+  // Compose-then-send: pick a step (or "delivered"), then hit Send. Nothing
+  // fires until the button is pressed. null = nothing staged yet.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const [log, setLog] = useState<PushResult[]>([]);
   const activityRef = useRef<string | null>(null);
   activityRef.current = activityId;
@@ -33,14 +40,22 @@ export default function DispatcherConsole() {
     return disconnect;
   }, []);
 
-  const push = async (step: typeof STEPS[number], event: 'update' | 'end') => {
-    if (!activityId) return;
-    const effectiveRider = reassignNext
-      ? { name: nextRider(rider.name), justReassigned: true }
-      : { ...rider, justReassigned: false };
-    setRider(effectiveRider);
-    setReassignNext(false);
-    await sendPush(activityId, toDeliveryState(step, effectiveRider), event);
+  const isEnd = selectedKey === DELIVERED_KEY;
+  const selectedStep =
+    selectedKey == null ? null : isEnd ? DELIVERED : STEPS[Number(selectedKey)];
+  const canSend = !!activityId && !!selectedStep && !sending;
+
+  // The one action that actually pushes. Everything above it just stages state.
+  const send = async () => {
+    if (!activityId || !selectedStep) return;
+    const rider: Rider = { name: courier, justReassigned: reassign };
+    setSending(true);
+    try {
+      await sendPush(activityId, toDeliveryState(selectedStep, rider), isEnd ? 'end' : 'update');
+    } finally {
+      setSending(false);
+      setReassign(false); // a reassignment is a one-shot treatment
+    }
   };
 
   return (
@@ -61,42 +76,61 @@ export default function DispatcherConsole() {
       )}
 
       <View style={styles.card}>
-        <Text style={styles.heading}>Courier</Text>
+        <Text style={styles.heading}>1 · Courier</Text>
         <View style={styles.riders}>
           {RIDERS.map((name) => (
             <Pressable
               key={name}
-              onPress={() => setRider({ name, justReassigned: false })}
-              style={[styles.chip, rider.name === name && styles.chipActive]}
+              onPress={() => setCourier(name)}
+              style={[styles.chip, courier === name && styles.chipActive]}
             >
-              <Text style={[styles.chipText, rider.name === name && styles.chipTextActive]}>{name}</Text>
+              <Text style={[styles.chipText, courier === name && styles.chipTextActive]}>{name}</Text>
             </Pressable>
           ))}
         </View>
         <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Reassign rider on next push</Text>
-          <Switch value={reassignNext} onValueChange={setReassignNext} />
+          <Text style={styles.toggleLabel}>Mark as rider reassignment</Text>
+          <Switch value={reassign} onValueChange={setReassign} />
         </View>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.heading}>Delivery steps</Text>
-        {STEPS.map((step, i) => (
-          <Pressable
-            key={i}
-            disabled={!activityId}
-            onPress={() => push(step, 'update')}
-            style={[styles.step, !activityId && styles.stepDisabled]}
-          >
-            <Text style={styles.stepText}>{i}. {step.status}</Text>
-          </Pressable>
-        ))}
+        <Text style={styles.heading}>2 · Update to send</Text>
+        {STEPS.map((step, i) => {
+          const key = String(i);
+          const active = selectedKey === key;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => setSelectedKey(key)}
+              style={[styles.step, active && styles.stepSelected]}
+            >
+              <Text style={styles.stepText}>{i}. {step.status}</Text>
+              {active && <Text style={styles.checkmark}>✓</Text>}
+            </Pressable>
+          );
+        })}
         <Pressable
-          disabled={!activityId}
-          onPress={() => push(DELIVERED, 'end')}
-          style={[styles.deliver, !activityId && styles.stepDisabled]}
+          onPress={() => setSelectedKey(DELIVERED_KEY)}
+          style={[styles.deliver, isEnd && styles.deliverSelected]}
         >
-          <Text style={styles.deliverText}>Deliver (end activity)</Text>
+          <Text style={styles.deliverText}>Delivered 🎉 (ends activity){isEnd ? '  ✓' : ''}</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.heading}>3 · Send</Text>
+        <Text style={styles.preview}>
+          {selectedStep
+            ? `“${selectedStep.status}” · ${courier}${reassign ? ' · reassignment' : ''}${isEnd ? ' · ends activity' : ''}`
+            : 'Pick an update above.'}
+        </Text>
+        <Pressable
+          disabled={!canSend}
+          onPress={send}
+          style={[styles.sendBtn, !canSend && styles.sendDisabled]}
+        >
+          <Text style={styles.sendText}>{sending ? 'Sending…' : 'Send notification'}</Text>
         </Pressable>
       </View>
 
@@ -112,10 +146,6 @@ export default function DispatcherConsole() {
       </View>
     </ScrollView>
   );
-}
-
-function nextRider(current: string): string {
-  return RIDERS[(RIDERS.indexOf(current) + 1) % RIDERS.length];
 }
 
 function Row({ label, value, good }: { label: string; value: string; good: boolean }) {
@@ -149,11 +179,35 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#111' },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   toggleLabel: { color: '#cfcfd6' },
-  step: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#26262c' },
-  stepDisabled: { opacity: 0.4 },
+  step: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: '#26262c',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  stepSelected: { backgroundColor: '#3a2a15', borderColor: '#ff7a1a' },
   stepText: { color: '#fff', fontWeight: '500' },
-  deliver: { paddingVertical: 14, borderRadius: 10, backgroundColor: '#1f7a3d', alignItems: 'center', marginTop: 4 },
+  checkmark: { color: '#ff7a1a', fontWeight: '700' },
+  deliver: {
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: '#1f7a3d',
+    alignItems: 'center',
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  deliverSelected: { borderColor: '#7dffa8' },
   deliverText: { color: '#fff', fontWeight: '700' },
+  preview: { color: '#cfcfd6', fontSize: 15 },
+  sendBtn: { paddingVertical: 15, borderRadius: 10, backgroundColor: '#ff7a1a', alignItems: 'center' },
+  sendDisabled: { opacity: 0.4 },
+  sendText: { color: '#111', fontWeight: '800', fontSize: 16 },
   hint: { color: '#6f6f78', fontSize: 12 },
   logLine: { fontFamily: 'monospace', fontSize: 13 },
 });
