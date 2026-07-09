@@ -10,7 +10,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { config, pushLiveActivity } from './apns.mjs';
+import { config, pushLiveActivity, toAppleEpochSeconds } from './apns.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:8081';
@@ -65,6 +65,17 @@ function readBody(req) {
 function parseJson(body) {
   try { return [JSON.parse(body), null]; }
   catch { return [null, 'invalid JSON body']; }
+}
+
+// The shared toDeliveryState() (delivery.ts) produces the NATIVE BRIDGE shape:
+// etaEpochMillis in Unix milliseconds, which the Swift module converts. But an
+// APNs content-state is decoded directly by the widget's Codable ContentState,
+// which expects `eta` as seconds-since-2001 (Apple epoch) and has NO
+// etaEpochMillis field. Translate at this boundary — a mismatch here is the
+// classic silent failure: APNs returns 200 and iOS drops the update with no
+// error anywhere.
+function toContentState({ etaEpochMillis, ...rest }) {
+  return { ...rest, eta: toAppleEpochSeconds(new Date(etaEpochMillis)) };
 }
 
 // Resolve the target device: DEVICE_ID env, else the single connected iPhone.
@@ -161,7 +172,7 @@ const server = createServer(async (req, res) => {
       return res.end(JSON.stringify({ error: 'unknown activityId' }));
     }
     try {
-      const result = await pushLiveActivity({ token: entry.token, contentState: state, event });
+      const result = await pushLiveActivity({ token: entry.token, contentState: toContentState(state), event });
       if (result.status === 410) dropActivity(activityId);
       broadcast('push-result', { activityId, ...result, at: Date.now() });
       res.writeHead(200, { ...cors, 'Content-Type': 'application/json' });
