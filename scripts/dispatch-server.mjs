@@ -6,7 +6,10 @@
 // The .p8 NEVER leaves this process — no route returns key material.
 
 import { createServer } from 'node:http';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { spawn, execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { config, pushLiveActivity } from './apns.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -62,6 +65,63 @@ function readBody(req) {
 function parseJson(body) {
   try { return [JSON.parse(body), null]; }
   catch { return [null, 'invalid JSON body']; }
+}
+
+// Resolve the target device: DEVICE_ID env, else the single connected iPhone.
+// devicectl only reliably writes JSON to a real file, so use a temp file.
+function resolveDeviceId() {
+  if (process.env.DEVICE_ID) return process.env.DEVICE_ID;
+  const out = join(tmpdir(), `dispatch-devices-${process.pid}.json`);
+  try {
+    execFileSync('xcrun', ['devicectl', 'list', 'devices', '--json-output', out], { stdio: 'ignore' });
+    const json = JSON.parse(readFileSync(out, 'utf8'));
+    const devices = (json.result?.devices ?? []).filter(
+      (d) =>
+        d.connectionProperties?.tunnelState === 'connected' &&
+        /iPhone/.test(d.hardwareProperties?.marketingName ?? d.deviceProperties?.name ?? '')
+    );
+    if (devices.length !== 1) {
+      throw new Error(`expected exactly one connected iPhone, found ${devices.length}. Set DEVICE_ID.`);
+    }
+    return devices[0].identifier;
+  } finally {
+    rmSync(out, { force: true });
+  }
+}
+
+// Spawn `devicectl … --console`, tail stdout for the NSLog token line, register each.
+function startConsoleScraper() {
+  const deviceId = resolveDeviceId();
+  const bundleId = config.bundleId;
+  console.log(`[dispatch] attaching console to ${deviceId} (${bundleId}) — this cold-starts the app; running activities survive and re-attach`);
+
+  const child = spawn('xcrun', [
+    'devicectl', 'device', 'process', 'launch',
+    '--console', '--terminate-existing',
+    '--device', deviceId, bundleId,
+  ]);
+
+  // Matches: [DropTrack] push token for <uuid>: <hex>
+  const re = /\[DropTrack\] push token for ([0-9A-Fa-f-]+): ([0-9a-f]+)/;
+  const onLine = (line) => {
+    const m = line.match(re);
+    if (m) registerToken(m[1], m[2]);
+  };
+  let buf = '';
+  const feed = (chunk) => {
+    buf += chunk;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      onLine(buf.slice(0, i));
+      buf = buf.slice(i + 1);
+    }
+  };
+  child.stdout.on('data', feed);
+  child.stderr.on('data', feed);
+  child.on('exit', (code) => {
+    console.error(`[dispatch] device console exited (code ${code}) — token intake stopped. Restart the server to reattach.`);
+  });
+  return child;
 }
 
 const server = createServer(async (req, res) => {
@@ -133,4 +193,14 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[dispatch] listening on http://127.0.0.1:${PORT}`);
   console.log(`[dispatch] APNs host: ${config.host}`);
+  if (process.env.DISPATCH_ALLOW_DEBUG === '1') {
+    console.log('[dispatch] debug mode: /debug/token enabled, device console NOT attached');
+    return;
+  }
+  try {
+    startConsoleScraper();
+  } catch (err) {
+    console.error(`[dispatch] could not attach device console: ${err.message}`);
+    console.error('[dispatch] server is up; tokens will not auto-register until a device is attached.');
+  }
 });
