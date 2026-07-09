@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { STEPS, DELIVERED, RIDERS, toDeliveryState, type Rider } from './delivery';
-import { connectDispatch, sendPush, type PushResult } from './src/dispatchClient';
+import { STEPS, DELIVERED, RIDERS, ORDER, toDeliveryState, type Rider } from './delivery';
+import { connectDispatch, sendPush, type PushResult, type Platform } from './src/dispatchClient';
 
 // The "delivered" option ends the activity; every other selection is an update.
 const DELIVERED_KEY = 'delivered';
@@ -17,15 +17,21 @@ export default function DispatcherConsole() {
   // fires until the button is pressed. null = nothing staged yet.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [platform, setPlatform] = useState<Platform>('ios');
   const [log, setLog] = useState<PushResult[]>([]);
   const activityRef = useRef<string | null>(null);
   activityRef.current = activityId;
+  // Read in the SSE callback (which is bound once) without reconnecting.
+  const platformRef = useRef(platform);
+  platformRef.current = platform;
 
   useEffect(() => {
     const disconnect = connectDispatch({
       onOpen: () => setOnline(true),
       onError: () => setOnline(false),
-      onToken: (id, tok) => {
+      onToken: (id, tok, tokPlatform) => {
+        // Only adopt the token for the platform currently selected.
+        if (tokPlatform !== platformRef.current) return;
         setActivityId(id);
         setToken(tok);
       },
@@ -51,7 +57,12 @@ export default function DispatcherConsole() {
     const rider: Rider = { name: courier, justReassigned: reassign };
     setSending(true);
     try {
-      await sendPush(activityId, toDeliveryState(selectedStep, rider), isEnd ? 'end' : 'update');
+      await sendPush(
+        activityId,
+        { ...toDeliveryState(selectedStep, rider), orderId: ORDER.orderId },
+        isEnd ? 'end' : 'update',
+        platform
+      );
     } finally {
       setSending(false);
       setReassign(false); // a reassignment is a one-shot treatment
@@ -61,6 +72,23 @@ export default function DispatcherConsole() {
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
       <Text style={styles.title}>DropTrack <Text style={styles.accent}>dispatcher</Text></Text>
+
+      <View style={styles.card}>
+        <Text style={styles.heading}>Platform</Text>
+        <View style={styles.riders}>
+          {(['ios', 'android'] as const).map((p) => (
+            <Pressable
+              key={p}
+              onPress={() => { setPlatform(p); setActivityId(null); setToken(null); }}
+              style={[styles.chip, platform === p && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, platform === p && styles.chipTextActive]}>
+                {p === 'ios' ? 'iOS' : 'Android'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
 
       <View style={styles.card}>
         <Row label="Dispatch server" value={online ? 'online' : 'offline'} good={online} />

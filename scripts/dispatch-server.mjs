@@ -11,6 +11,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { config, pushLiveActivity, toAppleEpochSeconds } from './apns.mjs';
+import { sendDataMessage } from './fcm.mjs';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:8081';
@@ -32,13 +33,14 @@ function broadcast(type, data) {
   for (const res of clients) res.write(frame);
 }
 
-// Called by the token source (stub now, devicectl scraper in Task 5).
-export function registerToken(activityId, token) {
+// Called by the token sources: the iOS devicectl scrape and the Android adb
+// logcat scrape. platform is 'ios' | 'android'.
+export function registerToken(activityId, token, platform) {
   const existing = registry.get(activityId);
   if (existing && existing.token === token) return; // no change
-  registry.set(activityId, { token, seenAt: Date.now() });
-  broadcast('token', { activityId, token });
-  console.log(`[dispatch] token registered for ${activityId}: ${token.slice(0, 8)}…`);
+  registry.set(activityId, { token, platform, seenAt: Date.now() });
+  broadcast('token', { activityId, token, platform });
+  console.log(`[dispatch] ${platform} token registered for ${activityId}: ${token.slice(0, 8)}…`);
 }
 
 function dropActivity(activityId) {
@@ -128,7 +130,7 @@ function startConsoleScraper() {
   const re = /\[DropTrack\] push token for ([0-9A-Fa-f-]+): ([0-9a-f]+)/;
   const onLine = (line) => {
     const m = line.match(re);
-    if (m) registerToken(m[1], m[2]);
+    if (m) registerToken(m[1], m[2], 'ios');
   };
   let buf = '';
   const feed = (chunk) => {
@@ -144,6 +146,30 @@ function startConsoleScraper() {
   child.on('exit', (code) => {
     console.error(`[dispatch] device console exited (code ${code}) — token intake stopped. Restart the server to reattach.`);
   });
+  return child;
+}
+
+// Scrape the FCM registration token from `adb logcat`. The Android app logs
+// `[DropTrack] fcm token: <token>` (module getFcmToken + service onNewToken) —
+// the adb analog of the iOS devicectl --console scrape.
+function startLogcatScraper() {
+  console.log('[dispatch] attaching adb logcat for FCM tokens (Android)');
+  const child = spawn('adb', ['logcat', '-s', 'DroptrackLive:I']);
+  const re = /\[DropTrack\] fcm token: ([A-Za-z0-9:_\-]+)/;
+  let buf = '';
+  const feed = (chunk) => {
+    buf += chunk;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const m = buf.slice(0, i).match(re);
+      // FCM tokens have no per-activity id; key the registry by a synthetic id.
+      if (m) registerToken(`android-${m[1].slice(0, 8)}`, m[1], 'android');
+      buf = buf.slice(i + 1);
+    }
+  };
+  child.stdout.on('data', feed);
+  child.stderr.on('data', feed);
+  child.on('exit', (code) => console.error(`[dispatch] adb logcat exited (code ${code})`));
   return child;
 }
 
@@ -164,8 +190,8 @@ const server = createServer(async (req, res) => {
     });
     res.write('\n');
     clients.add(res);
-    for (const [activityId, { token }] of registry) {
-      res.write(`event: token\ndata: ${JSON.stringify({ activityId, token })}\n\n`);
+    for (const [activityId, { token, platform }] of registry) {
+      res.write(`event: token\ndata: ${JSON.stringify({ activityId, token, platform })}\n\n`);
     }
     req.on('close', () => clients.delete(res));
     return;
@@ -184,10 +210,30 @@ const server = createServer(async (req, res) => {
       res.writeHead(404, { ...cors, 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'unknown activityId' }));
     }
+    const platform = payload.platform ?? entry.platform ?? 'ios';
     try {
-      const result = await pushLiveActivity({ token: entry.token, contentState: toContentState(state), event });
-      if (result.status === 410) dropActivity(activityId);
-      broadcast('push-result', { activityId, ...result, at: Date.now() });
+      let result;
+      if (platform === 'android') {
+        // FCM data values must be strings. activityId in the payload is the
+        // delivery id the service re-posts under (delivery-<orderId>).
+        const data = {
+          activityId: `delivery-${state.orderId ?? 'DT-4521'}`,
+          orderId: String(state.orderId ?? 'DT-4521'),
+          status: String(state.status),
+          progress: String(state.progress),
+          etaEpochMillis: String(state.etaEpochMillis),
+          stopsRemaining: String(state.stopsRemaining),
+          courierName: String(state.courierName),
+          riderReassigned: String(!!state.riderReassigned),
+          event: event ?? 'update',
+        };
+        result = await sendDataMessage({ token: entry.token, data });
+        if (result.status === 404) dropActivity(activityId); // UNREGISTERED
+      } else {
+        result = await pushLiveActivity({ token: entry.token, contentState: toContentState(state), event });
+        if (result.status === 410) dropActivity(activityId);
+      }
+      broadcast('push-result', { activityId, platform, ...result, at: Date.now() });
       res.writeHead(200, { ...cors, 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(result));
     } catch (err) {
@@ -204,8 +250,8 @@ const server = createServer(async (req, res) => {
       res.writeHead(400, { ...cors, 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: parseErr }));
     }
-    const { activityId, token } = payload;
-    registerToken(activityId, token);
+    const { activityId, token, platform } = payload;
+    registerToken(activityId, token, platform ?? 'ios');
     res.writeHead(204, cors);
     return res.end();
   }
@@ -225,6 +271,14 @@ server.listen(PORT, '127.0.0.1', () => {
     startConsoleScraper();
   } catch (err) {
     console.error(`[dispatch] could not attach device console: ${err.message}`);
-    console.error('[dispatch] server is up; tokens will not auto-register until a device is attached.');
+    console.error('[dispatch] server is up; iOS tokens will not auto-register until an iPhone is attached.');
+  }
+  // Android: attach the logcat scraper only when an adb device is present.
+  try {
+    const out = execFileSync('adb', ['devices'], { encoding: 'utf8' });
+    if (out.split('\n').some((l) => /\tdevice$/.test(l))) startLogcatScraper();
+    else console.log('[dispatch] no adb device — Android FCM token intake skipped');
+  } catch {
+    console.log('[dispatch] adb not found — Android FCM token intake skipped');
   }
 });
