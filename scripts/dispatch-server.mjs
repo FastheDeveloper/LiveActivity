@@ -48,11 +48,23 @@ function dropActivity(activityId) {
   }
 }
 
-const cors = {
-  'Access-Control-Allow-Origin': WEB_ORIGIN,
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+// CORS, computed per request. The server binds loopback only, so any browser
+// origin reaching it is already local — reflect any localhost/127.0.0.1 origin
+// (Expo web may serve from either host, on any port) so the console doesn't
+// silently show "offline" over a host mismatch. Anything else falls back to
+// the explicit WEB_ORIGIN. A single Access-Control-Allow-Origin can hold only
+// one value, hence the reflect-or-fallback.
+function corsFor(req) {
+  const origin = req.headers.origin;
+  const allow = origin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+    ? origin
+    : WEB_ORIGIN;
+  return {
+    'Access-Control-Allow-Origin': allow,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+}
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -136,6 +148,7 @@ function startConsoleScraper() {
 }
 
 const server = createServer(async (req, res) => {
+  const cors = corsFor(req);
   if (req.method === 'OPTIONS') {
     res.writeHead(204, cors);
     return res.end();
