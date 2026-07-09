@@ -110,7 +110,18 @@ class DroptrackLiveModule : Module() {
     AsyncFunction("getRunningActivities") {
       val ctx = context ?: return@AsyncFunction emptyList<Map<String, Any?>>()
       val active = DeliveryNotifier.activeDelivery(ctx)
-      return@AsyncFunction if (active != null) listOf(active) else emptyList()
+        ?: return@AsyncFunction emptyList<Map<String, Any?>>()
+      val activityId = active["activityId"] as String
+      // Don't rehydrate a phantom: if the notification is gone (dismissed or
+      // cleared by a reinstall) the persisted record is stale — drop it.
+      if (!DeliveryNotifier.isActive(ctx, activityId)) {
+        DeliveryNotifier.clear(ctx)
+        return@AsyncFunction emptyList<Map<String, Any?>>()
+      }
+      // Repopulate the in-memory map so update/end/cancel work after a cold
+      // start (the map is per-process and was lost when the app was killed).
+      deliveries[activityId] = DeliveryInfoRecord().apply { orderId = active["orderId"] as String }
+      return@AsyncFunction listOf(active)
     }
 
     AsyncFunction("startDelivery") { info: DeliveryInfoRecord, state: DeliveryStateRecord ->
@@ -124,13 +135,22 @@ class DroptrackLiveModule : Module() {
 
     AsyncFunction("updateDelivery") { activityId: String, state: DeliveryStateRecord ->
       val ctx = context ?: throw NoContextException()
-      val info = deliveries[activityId] ?: throw ActivityNotFoundException(activityId)
+      // Fall back to the activityId ("delivery-<orderId>") if the in-memory map
+      // was lost (cold start before getRunningActivities ran) — the only field
+      // it carries is orderId, which is derivable.
+      val info = deliveries[activityId] ?: reconstructInfo(activityId).also { deliveries[activityId] = it }
       postState(ctx, activityId, info, state, ongoing = true)
     }
 
     AsyncFunction("endDelivery") { activityId: String, state: DeliveryStateRecord, dismissAfterSeconds: Double? ->
       val ctx = context ?: throw NoContextException()
-      val info = deliveries.remove(activityId) ?: throw ActivityNotFoundException(activityId)
+      val info = deliveries.remove(activityId)
+      if (info == null) {
+        // Not tracked in this process (cold start / stale record). Ending should
+        // never fail — just tear it down: cancel the notification + clear state.
+        DeliveryNotifier.cancel(ctx, activityId)
+        return@AsyncFunction
+      }
       postState(ctx, activityId, info, state, ongoing = false)
       if (dismissAfterSeconds != null) {
         DeliveryNotifier.cancelAfter(ctx, activityId, (dismissAfterSeconds * 1000).toLong())
@@ -143,6 +163,11 @@ class DroptrackLiveModule : Module() {
 
   private val notificationManager: NotificationManager?
     get() = context?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+
+  // Rebuild the (tiny) static info from the activityId when the in-memory map
+  // was lost. activityId is always "delivery-<orderId>".
+  private fun reconstructInfo(activityId: String) =
+    DeliveryInfoRecord().apply { orderId = activityId.removePrefix("delivery-") }
 
   // Unpacks the Expo Records into the shared builder used by both entry points.
   private fun postState(

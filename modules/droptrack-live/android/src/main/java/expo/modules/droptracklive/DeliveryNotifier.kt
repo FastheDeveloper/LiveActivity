@@ -52,6 +52,28 @@ object DeliveryNotifier {
     prefs.edit().putString(KEY_ACTIVE, json.toString()).apply()
   }
 
+  // True if our notification for this activity is currently in the tray. Used
+  // to detect a stale persisted record (notification dismissed/cleared, e.g. by
+  // a reinstall) so we don't rehydrate a phantom.
+  fun isActive(ctx: Context, activityId: String): Boolean {
+    val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    val id = notificationIdFor(activityId)
+    return manager.activeNotifications.any { it.id == id }
+  }
+
+  // Forget the persisted delivery (without touching any notification).
+  fun clear(ctx: Context) {
+    ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_ACTIVE).apply()
+  }
+
+  // Tear a delivery down unconditionally: cancel the notification + clear state.
+  // Safe to call for an activity this process never tracked (stale / cold start).
+  fun cancel(ctx: Context, activityId: String) {
+    val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    manager.cancel(notificationIdFor(activityId))
+    clear(ctx)
+  }
+
   // The persisted live delivery as a JS-friendly map, or null if none.
   fun activeDelivery(ctx: Context): Map<String, Any?>? {
     val raw = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_ACTIVE, null)
