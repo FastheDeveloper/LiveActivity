@@ -12,6 +12,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.graphics.drawable.IconCompat
+import org.json.JSONObject
 
 // Shared notification builder. Called from BOTH the Expo module (JS-driven,
 // local) and DroptrackFcmService (push-driven, from a background process that
@@ -21,10 +22,53 @@ object DeliveryNotifier {
   const val TAG = "DroptrackLive"
   private const val CHANNEL_ID = "droptrack.delivery"
   private const val BRAND_ORANGE = 0xFFFF6B2C.toInt()
+  private const val PREFS = "droptrack"
+  private const val KEY_ACTIVE = "active_delivery"
 
   private val mainHandler = Handler(Looper.getMainLooper())
 
   fun notificationIdFor(activityId: String) = activityId.hashCode()
+
+  // Persist the live delivery so a cold-started app (e.g. after tapping the
+  // notification when the process was killed) can rehydrate its UI. Android has
+  // no ActivityKit store, so the notification's backing state lives here. Ended
+  // deliveries clear the record. Read back by getRunningActivities().
+  private fun persist(
+    ctx: Context, activityId: String, orderId: String, status: String, progress: Double,
+    etaEpochMillis: Double, stopsRemaining: Int, courierName: String, riderReassigned: Boolean,
+    ongoing: Boolean,
+  ) {
+    val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    if (!ongoing) {
+      prefs.edit().remove(KEY_ACTIVE).apply()
+      return
+    }
+    val json = JSONObject().apply {
+      put("activityId", activityId); put("orderId", orderId); put("status", status)
+      put("progress", progress); put("etaEpochMillis", etaEpochMillis)
+      put("stopsRemaining", stopsRemaining); put("courierName", courierName)
+      put("riderReassigned", riderReassigned)
+    }
+    prefs.edit().putString(KEY_ACTIVE, json.toString()).apply()
+  }
+
+  // The persisted live delivery as a JS-friendly map, or null if none.
+  fun activeDelivery(ctx: Context): Map<String, Any?>? {
+    val raw = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_ACTIVE, null)
+      ?: return null
+    val j = JSONObject(raw)
+    return mapOf(
+      "activityId" to j.getString("activityId"),
+      "orderId" to j.getString("orderId"),
+      "status" to j.getString("status"),
+      "progress" to j.getDouble("progress"),
+      "etaEpochMillis" to j.getDouble("etaEpochMillis"),
+      "stopsRemaining" to j.getInt("stopsRemaining"),
+      "courierName" to j.getString("courierName"),
+      "riderReassigned" to j.getBoolean("riderReassigned"),
+      "pushToken" to "",
+    )
+  }
 
   fun ensureChannel(ctx: Context) {
     val manager = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -91,6 +135,10 @@ object DeliveryNotifier {
       Log.d(TAG, "hasPromotableCharacteristics=${notification.hasPromotableCharacteristics()}")
     }
     manager.notify(notificationIdFor(activityId), notification)
+    persist(
+      ctx, activityId, orderId, status, progress, etaEpochMillis,
+      stopsRemaining, courierName, riderReassigned, ongoing,
+    )
   }
 
   // PendingIntent that (re)opens the app's main activity when the notification

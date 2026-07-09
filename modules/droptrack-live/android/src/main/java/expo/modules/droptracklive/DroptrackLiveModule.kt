@@ -103,6 +103,16 @@ class DroptrackLiveModule : Module() {
         }
     }
 
+    // Rehydrate a cold-started app from the persisted live delivery — the
+    // Android analog of the iOS getRunningActivities (which reads ActivityKit).
+    // App.tsx's resync effect calls this on mount, so tapping the notification
+    // when the process was killed reopens onto the current step, not empty.
+    AsyncFunction("getRunningActivities") {
+      val ctx = context ?: return@AsyncFunction emptyList<Map<String, Any?>>()
+      val active = DeliveryNotifier.activeDelivery(ctx)
+      return@AsyncFunction if (active != null) listOf(active) else emptyList()
+    }
+
     AsyncFunction("startDelivery") { info: DeliveryInfoRecord, state: DeliveryStateRecord ->
       val ctx = context ?: throw NoContextException()
       DeliveryNotifier.ensureChannel(ctx)
