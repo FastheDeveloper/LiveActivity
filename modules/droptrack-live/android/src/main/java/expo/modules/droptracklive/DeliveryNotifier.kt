@@ -2,7 +2,9 @@ package expo.modules.droptracklive
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.os.Handler
@@ -60,6 +62,10 @@ object DeliveryNotifier {
       .setShortCriticalText("$progressPercent%")
       .setRequestPromotedOngoing(ongoing)
 
+    // Tapping the notification opens the app. Without a content intent Android
+    // has no tap target and just expands/collapses the notification.
+    launchIntent(ctx, activityId)?.let { builder.setContentIntent(it) }
+
     if (etaEpochMillis > System.currentTimeMillis()) {
       builder.setWhen(etaEpochMillis.toLong()).setShowWhen(true)
     }
@@ -85,6 +91,20 @@ object DeliveryNotifier {
       Log.d(TAG, "hasPromotableCharacteristics=${notification.hasPromotableCharacteristics()}")
     }
     manager.notify(notificationIdFor(activityId), notification)
+  }
+
+  // PendingIntent that (re)opens the app's main activity when the notification
+  // is tapped. Keyed per activity so distinct deliveries don't collide.
+  private fun launchIntent(ctx: Context, activityId: String): PendingIntent? {
+    val intent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
+      ?.apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
+      ?: return null
+    return PendingIntent.getActivity(
+      ctx,
+      notificationIdFor(activityId),
+      intent,
+      PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
   }
 
   fun cancelAfter(ctx: Context, activityId: String, delayMs: Long) {

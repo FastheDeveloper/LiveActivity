@@ -35,5 +35,8 @@ class DroptrackFcmService : FirebaseMessagingService() {
     if (event == "end") {
       DeliveryNotifier.cancelAfter(this, activityId, 30_000L)
     }
+    // If the app is alive, forward the push so the JS UI reflects it too (the
+    // notification updated above regardless). No-op when the app is killed.
+    DroptrackLiveModule.emitPush(d)
   }
 }

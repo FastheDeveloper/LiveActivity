@@ -3,6 +3,7 @@ import { NativeModule, requireNativeModule } from 'expo';
 import type {
   DeliveryInfo,
   DeliveryState,
+  DeliveryPushEvent,
   PushTokenEvent,
   RunningActivity,
 } from './DroptrackLive.types';
@@ -10,6 +11,8 @@ import type {
 type DroptrackLiveEvents = {
   /** iOS only — never fires on Android. */
   onPushTokenReceived(event: PushTokenEvent): void;
+  /** Android only — an FCM push arrived while the app is running. */
+  onDeliveryPush(event: DeliveryPushEvent): void;
 };
 
 declare class DroptrackLiveModule extends NativeModule<DroptrackLiveEvents> {
@@ -22,6 +25,8 @@ declare class DroptrackLiveModule extends NativeModule<DroptrackLiveEvents> {
   startDelivery(info: DeliveryInfo, state: DeliveryState): Promise<string>;
   /** iOS only — hex APNs token for the activity, or null if not issued yet. */
   getPushToken?(activityId: string): Promise<string | null>;
+  /** Android only — the FCM registration token for this install. */
+  getFcmToken?(): Promise<string>;
   /** iOS only — activities still running, started by any previous launch. */
   getRunningActivities?(): Promise<RunningActivity[]>;
   /** iOS only — dev helper: end every running activity immediately. */

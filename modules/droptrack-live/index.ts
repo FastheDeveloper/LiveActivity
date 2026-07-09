@@ -4,11 +4,12 @@ import DroptrackLiveModule from './src/DroptrackLiveModule';
 import type {
   DeliveryInfo,
   DeliveryState,
+  DeliveryPushEvent,
   PushTokenEvent,
   RunningActivity,
 } from './src/DroptrackLive.types';
 
-export type { DeliveryInfo, DeliveryState, PushTokenEvent, RunningActivity };
+export type { DeliveryInfo, DeliveryState, DeliveryPushEvent, PushTokenEvent, RunningActivity };
 
 /**
  * Whether this device can show live delivery tracking at all
@@ -68,6 +69,27 @@ export function onPushTokenReceived(
 export async function getPushToken(activityId: string): Promise<string | null> {
   if (!DroptrackLiveModule.getPushToken) return null;
   return DroptrackLiveModule.getPushToken(activityId);
+}
+
+/**
+ * Android only: the FCM registration token for this install (the target for a
+ * remote Live Update push). Null on iOS or if unavailable. Also logged natively
+ * so the dispatch server can scrape it from `adb logcat`.
+ */
+export async function getFcmToken(): Promise<string | null> {
+  if (!DroptrackLiveModule.getFcmToken) return null;
+  return DroptrackLiveModule.getFcmToken();
+}
+
+/**
+ * Android only: an FCM push arrived while the app is running. The notification
+ * updates regardless; subscribe to keep the in-app UI in sync too. No-op on iOS.
+ */
+export function onDeliveryPush(
+  listener: (event: DeliveryPushEvent) => void
+): { remove: () => void } {
+  if (Platform.OS !== 'android') return { remove: () => {} };
+  return DroptrackLiveModule.addListener('onDeliveryPush', listener);
 }
 
 /**

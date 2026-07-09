@@ -69,6 +69,33 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
+  // Android: fetch the FCM token on mount so it's logged for the dispatch
+  // server's adb-logcat scrape (the iOS token arrives via the event above).
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    void DroptrackLive.getFcmToken().then((t) => t && setPushToken(t));
+  }, []);
+
+  // Android: an FCM push updates the notification directly (our service), but
+  // the app's React state is separate — mirror the pushed state into the console
+  // so it doesn't sit on the old step. (iOS uses the AppState resync above.)
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = DroptrackLive.onDeliveryPush((e) => {
+      if (e.event === 'end') {
+        setActivityId(null);
+        return;
+      }
+      // A push means a delivery is live — reflect it in the console, including
+      // the activityId that gates the whole "tracking" UI.
+      setActivityId(e.activityId);
+      setRider({ name: e.courierName, justReassigned: e.riderReassigned === 'true' });
+      const index = STEPS.findIndex((s) => s.status === e.status);
+      if (index >= 0) setStepIndex(index);
+    });
+    return () => sub.remove();
+  }, []);
+
   // Live Activities belong to the system, not to this process: they survive
   // force-quit and relaunch, and a PUSH updates the widget directly without our
   // JS ever running — so our in-memory step/rider goes stale. Pull the system's

@@ -41,11 +41,32 @@ class ActivityNotFoundException(id: String) :
 class DroptrackLiveModule : Module() {
   private val deliveries = mutableMapOf<String, DeliveryInfoRecord>()
 
+  // Static bridge so DroptrackFcmService (a separate entry point) can forward a
+  // push to JS WHEN the app is alive — the Android analog of the iOS foreground
+  // resync. Null when no module instance exists (app killed); the notification
+  // still updates via the service, the JS UI just can't (there's nothing to
+  // update).
+  companion object {
+    @Volatile private var pushEmitter: ((Map<String, String>) -> Unit)? = null
+
+    fun emitPush(data: Map<String, String>) {
+      pushEmitter?.invoke(data)
+    }
+  }
+
   override fun definition() = ModuleDefinition {
     Name("DroptrackLive")
 
-    // Emitted when the module observes an FCM registration token (getFcmToken).
-    Events("onFcmTokenReceived")
+    // onFcmTokenReceived: a new FCM token. onDeliveryPush: a push arrived while
+    // the app is running, so the dev console can reflect it live.
+    Events("onFcmTokenReceived", "onDeliveryPush")
+
+    OnCreate {
+      pushEmitter = { data -> sendEvent("onDeliveryPush", data) }
+    }
+    OnDestroy {
+      pushEmitter = null
+    }
 
     Constants(
       // Notifications work everywhere we run; what varies is the treatment.

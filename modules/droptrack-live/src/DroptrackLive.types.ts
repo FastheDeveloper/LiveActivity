@@ -22,6 +22,23 @@ export type PushTokenEvent = {
 };
 
 /**
+ * Android only. Emitted when an FCM push arrives while the app is running, so
+ * the UI can reflect it (the notification updates regardless). All values are
+ * strings — FCM data is string-keyed; the JS handler parses them.
+ */
+export type DeliveryPushEvent = {
+  activityId: string;
+  orderId: string;
+  status: string;
+  progress: string;
+  etaEpochMillis: string;
+  stopsRemaining: string;
+  courierName: string;
+  riderReassigned: string;
+  event: string;
+};
+
+/**
  * A live activity that is already running — recovered from the system rather
  * than from our own memory. `pushToken` is '' until APNs issues one.
  */
