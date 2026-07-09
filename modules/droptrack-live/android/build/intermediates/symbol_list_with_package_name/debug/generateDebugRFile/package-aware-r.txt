@@ -1,2 +1,0 @@
-expo.modules.droptracklive
-drawable ic_delivery

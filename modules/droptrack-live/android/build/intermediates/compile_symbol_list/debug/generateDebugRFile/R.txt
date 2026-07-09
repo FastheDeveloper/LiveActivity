@@ -1,1 +1,0 @@
-int drawable ic_delivery 0x0
