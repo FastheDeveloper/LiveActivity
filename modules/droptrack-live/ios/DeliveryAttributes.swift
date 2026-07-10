@@ -1,19 +1,18 @@
 import ActivityKit
 import Foundation
 
-// The "contract" for our Live Activity, split in two:
+// The contract for the Live Activity, split in two:
 //  - static attributes: set once when the activity starts, never change
 //  - ContentState: the dynamic part — every update pushes a new one
 //
-// IMPORTANT: the widget extension (added in Phase 1b) must compile an
-// IDENTICAL copy of this struct. ActivityKit matches the app's activity to
-// the widget's UI by the attribute type's name and its Codable shape, so the
-// two definitions have to stay in lockstep.
+// IMPORTANT: the widget extension must compile an IDENTICAL copy of this
+// struct. ActivityKit matches the app's activity to the widget's UI by the
+// attribute type's name and its Codable shape, so the two definitions have to
+// stay in lockstep.
 //
-// HISTORY: courierName started life as a static attribute — then Phase 2's
-// rider-reassignment feature proved couriers *do* change mid-delivery, and
-// the compiler made us move it here. The static half is a bet that a field
-// can never change; lose the bet and every layer of the contract moves.
+// Note: courierName lives in ContentState, not the static attributes, because
+// a rider can be reassigned mid-delivery. The static half is a bet that a
+// field can never change; lose the bet and every layer of the contract moves.
 struct DeliveryAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
     /// Human-readable status, e.g. "Picked up", "2 stops away"

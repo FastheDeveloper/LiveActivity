@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// TSK-3: push a Live Activity update through APNs — no app involvement.
+// Push a Live Activity update through APNs, with no app involvement.
 // Thin CLI over scripts/apns.mjs (which holds the signing + HTTP/2 core).
 //
 // Usage:

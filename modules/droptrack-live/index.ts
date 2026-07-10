@@ -13,7 +13,7 @@ export type { DeliveryInfo, DeliveryState, DeliveryPushEvent, PushTokenEvent, Ru
 
 /**
  * Whether this device can show live delivery tracking at all
- * (iOS 16.2+ for Live Activities; Android 16+ for Live Updates in Phase 2).
+ * (iOS 16.2+ for Live Activities; Android 16+ for Live Updates).
  */
 export function isSupported(): boolean {
   return DroptrackLiveModule.isSupported ?? false;

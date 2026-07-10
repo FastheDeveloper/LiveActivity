@@ -47,3 +47,7 @@ yarn-error.*
 
 # local Expo module build output (rebuilt by Gradle)
 modules/*/android/build/
+
+# AI tooling / local agent config (not for external clones)
+.claude/
+docs/superpowers/

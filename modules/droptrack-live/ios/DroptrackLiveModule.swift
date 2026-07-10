@@ -72,7 +72,7 @@ public class DroptrackLiveModule: Module {
       let activity = try Activity.request(
         attributes: attributes,
         content: content,
-        pushType: .token  // ask APNs for a per-activity update token (TSK-3)
+        pushType: .token  // ask APNs for a per-activity update token
       )
       self.observePushToken(of: activity)
       return activity.id

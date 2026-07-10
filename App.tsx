@@ -59,7 +59,7 @@ export default function App() {
   const fail = (err: unknown) =>
     Alert.alert('Live activity error', err instanceof Error ? err.message : String(err));
 
-  // TSK-3: APNs issues a fresh token per activity, seconds after start.
+  // APNs issues a fresh token per activity, seconds after start.
   // Log the full hex so it can be copy-pasted into scripts/push-update.mjs.
   useEffect(() => {
     const sub = DroptrackLive.onPushTokenReceived(({ activityId: id, token }) => {

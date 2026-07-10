@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Local signing server for the dispatcher portal. Binds 127.0.0.1 only.
 // Holds the .p8, signs + sends pushes, and streams per-activity push tokens
-// (scraped from the device console in Task 5) to the browser over SSE.
+// (scraped from the device console) to the browser over SSE.
 //
 // The .p8 NEVER leaves this process — no route returns key material.
 
